@@ -388,6 +388,8 @@ class FfiModel with ChangeNotifier {
         parent.target?.fileModel.jobController.updateFolderFiles(evt);
       } else if (name == 'add_connection') {
         parent.target?.serverModel.addConnection(evt);
+      } else if (name == 'show_cm_window') {
+        await parent.target?.serverModel.showConnectionManagerWindow();
       } else if (name == 'on_client_remove') {
         parent.target?.serverModel.onClientRemove(evt);
       } else if (name == 'update_quality_status') {

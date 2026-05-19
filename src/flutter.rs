@@ -1504,13 +1504,6 @@ pub mod connection_manager {
         //TODO port_forward
         fn add_connection(&self, client: &crate::ui_cm_interface::Client) {
             let client_json = serde_json::to_string(&client).unwrap_or("".into());
-            // send to Android service, active notification no matter UI is shown or not.
-            #[cfg(target_os = "android")]
-            if let Err(e) =
-                call_main_service_set_by_name("add_connection", Some(&client_json), None)
-            {
-                log::debug!("call_main_service_set_by_name fail,{}", e);
-            }
             // send to UI, refresh widget
             self.push_event("add_connection", &[("client", &client_json)]);
         }
@@ -1555,6 +1548,10 @@ pub mod connection_manager {
 
         fn file_transfer_log(&self, action: &str, log: &str) {
             self.push_event("cm_file_transfer_log", &[(action, log)]);
+        }
+
+        fn show_cm_window(&self) {
+            self.push_event::<&str>("show_cm_window", &[]);
         }
     }
 

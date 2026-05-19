@@ -196,6 +196,8 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
     fn update_voice_call_state(&self, client: &Client);
 
     fn file_transfer_log(&self, action: &str, log: &str);
+
+    fn show_cm_window(&self);
 }
 
 impl<T: InvokeUiCM> Deref for ConnectionManager<T> {
@@ -613,6 +615,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 }
                                 Data::FileTransferLog((action, log)) => {
                                     self.cm.ui_handler.file_transfer_log(&action, &log);
+                                }
+                                Data::ShowCmWindow => {
+                                    self.cm.ui_handler.show_cm_window();
+                                    break;
                                 }
                                 #[cfg(target_os = "windows")]
                                 Data::ClipboardFile(_clip) => {

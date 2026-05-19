@@ -579,11 +579,14 @@ class ServerModel with ChangeNotifier {
       }
       scrollToBottom();
       notifyListeners();
-      if (isAndroid && !client.authorized) showLoginDialog(client);
       if (isAndroid) androidUpdatekeepScreenOn();
     } catch (e) {
       debugPrint("Failed to call loginRequest,error:$e");
     }
+  }
+
+  Future<void> showConnectionManagerWindow() async {
+    await showCmWindow();
   }
 
   void _addTab(Client client) {

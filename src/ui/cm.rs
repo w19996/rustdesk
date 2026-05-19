@@ -73,6 +73,11 @@ impl InvokeUiCM for SciterHandler {
     }
 
     fn file_transfer_log(&self, _action: &str, _log: &str) {}
+
+    fn show_cm_window(&self) {
+        *HIDE_CM.lock().unwrap() = false;
+        self.call("bring_to_top", &make_args!());
+    }
 }
 
 impl SciterHandler {

@@ -1,7 +1,5 @@
 use crate::client::translate;
-#[cfg(windows)]
 use crate::ipc::Data;
-#[cfg(windows)]
 use hbb_common::tokio;
 use hbb_common::{allow_err, log};
 use std::sync::{Arc, Mutex};
@@ -65,10 +63,15 @@ fn make_tray() -> hbb_common::ResultType<()> {
         None
     };
     let open_i = MenuItem::new(translate("Open".to_owned()), true, None);
+    let show_cm_i = MenuItem::new(
+        translate("Show connection management window".to_owned()),
+        true,
+        None,
+    );
     if let Some(quit_i) = &quit_i {
-        tray_menu.append_items(&[&open_i, quit_i]).ok();
+        tray_menu.append_items(&[&open_i, &show_cm_i, quit_i]).ok();
     } else {
-        tray_menu.append_items(&[&open_i]).ok();
+        tray_menu.append_items(&[&open_i, &show_cm_i]).ok();
     }
     let tooltip = |count: usize| {
         if count == 0 {
@@ -117,6 +120,10 @@ fn make_tray() -> hbb_common::ResultType<()> {
                 }
             }
         }
+    };
+
+    let show_cm_func = move || {
+        show_cm_window_from_tray();
     };
 
     #[cfg(windows)]
@@ -181,9 +188,13 @@ fn make_tray() -> hbb_common::ResultType<()> {
                     }
                 } else if event.id == open_i.id() {
                     open_func();
+                } else if event.id == show_cm_i.id() {
+                    show_cm_func();
                 }
             } else if event.id == open_i.id() {
                 open_func();
+            } else if event.id == show_cm_i.id() {
+                show_cm_func();
             }
         }
 
@@ -223,6 +234,24 @@ fn make_tray() -> hbb_common::ResultType<()> {
             }
         }
     });
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn show_cm_window_from_tray() {
+    if let Ok(mut c) = crate::ipc::connect(1000, "_cm").await {
+        if c.send(&Data::ShowCmWindow).await.is_ok() {
+            return;
+        }
+    }
+    allow_err!(crate::run_me(vec!["--cm"]));
+    for _ in 0..20 {
+        hbb_common::sleep(0.3).await;
+        if let Ok(mut c) = crate::ipc::connect(1000, "_cm").await {
+            if c.send(&Data::ShowCmWindow).await.is_ok() {
+                return;
+            }
+        }
+    }
 }
 
 #[cfg(windows)]

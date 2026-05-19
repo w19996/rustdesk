@@ -348,6 +348,7 @@ pub struct Connection {
     cm_read_job_ids: HashSet<i32>,
     terminal_service_id: String,
     terminal_persistent: bool,
+    ignore_initial_mouse_move: bool,
     // The user token must be set when terminal is enabled.
     // 0 indicates SYSTEM user
     // other values indicate current user
@@ -529,6 +530,7 @@ impl Connection {
             cm_read_job_ids: HashSet::new(),
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
+            ignore_initial_mouse_move: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             terminal_user_token: None,
             terminal_generic_service: None,
@@ -1538,6 +1540,7 @@ impl Connection {
             return false;
         }
         self.authorized = true;
+        self.ignore_initial_mouse_move = true;
         let (conn_type, auth_conn_type) = if self.file_transfer.is_some() {
             (1, AuthConnType::FileTransfer)
         } else if self.port_forward_socket.is_some() {
@@ -2684,6 +2687,12 @@ impl Connection {
                 Some(message::Union::MouseEvent(mut me)) => {
                     if self.is_authed_view_camera_conn() {
                         return true;
+                    }
+                    if self.ignore_initial_mouse_move {
+                        self.ignore_initial_mouse_move = false;
+                        if is_initial_mouse_move(&me) {
+                            return true;
+                        }
                     }
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
@@ -5713,6 +5722,12 @@ impl Drop for Connection {
             }
         }
     }
+}
+
+fn is_initial_mouse_move(evt: &MouseEvent) -> bool {
+    let buttons = evt.mask >> 3;
+    let evt_type = evt.mask & crate::input::MOUSE_TYPE_MASK;
+    buttons == 0 && evt_type == crate::input::MOUSE_TYPE_MOVE
 }
 
 #[cfg(target_os = "linux")]
