@@ -502,6 +502,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Outgoing connection", "发起的连接"),
         ("Exit", "退出"),
         ("Open", "打开"),
+        ("Show connection management window", "显示连接管理窗口"),
         ("logout_tip", "确定要退出登录吗？"),
         ("Service", "服务"),
         ("Start", "启动"),

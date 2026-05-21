@@ -9,7 +9,6 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/cm_file_model.dart';
-import 'package:flutter_hbb/utils/platform_channel.dart';
 import 'package:get/get.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:provider/provider.dart';
@@ -55,14 +54,8 @@ class _DesktopServerPageState extends State<DesktopServerPage>
 
   @override
   void onWindowClose() {
-    Future.wait([gFFI.serverModel.closeAll(), gFFI.close()]).then((_) {
-      if (isMacOS) {
-        RdPlatformChannel.instance.terminate();
-      } else {
-        windowManager.setPreventClose(false);
-        windowManager.close();
-      }
-    });
+    // Keep existing controlled sessions alive when user closes the CM window.
+    hideCmWindow();
     super.onWindowClose();
   }
 

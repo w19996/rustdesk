@@ -2689,10 +2689,10 @@ impl Connection {
                         return true;
                     }
                     if self.ignore_initial_mouse_move {
-                        self.ignore_initial_mouse_move = false;
-                        if is_initial_mouse_move(&me) {
+                        if should_ignore_initial_mouse_event(&me) {
                             return true;
                         }
+                        self.ignore_initial_mouse_move = false;
                     }
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
@@ -5724,10 +5724,19 @@ impl Drop for Connection {
     }
 }
 
-fn is_initial_mouse_move(evt: &MouseEvent) -> bool {
+fn should_ignore_initial_mouse_event(evt: &MouseEvent) -> bool {
     let buttons = evt.mask >> 3;
     let evt_type = evt.mask & crate::input::MOUSE_TYPE_MASK;
-    buttons == 0 && evt_type == crate::input::MOUSE_TYPE_MOVE
+
+    // Some clients may emit a spurious origin click sequence on initial attach.
+    // Dropping only this first synthetic event avoids moving to (0,0) and opening
+    // the context menu on Windows while keeping normal input unaffected.
+    let is_spurious_origin_click = evt.x == 0
+        && evt.y == 0
+        && (evt_type == crate::input::MOUSE_TYPE_DOWN || evt_type == crate::input::MOUSE_TYPE_UP)
+        && buttons != 0;
+
+    (buttons == 0 && evt_type == crate::input::MOUSE_TYPE_MOVE) || is_spurious_origin_click
 }
 
 #[cfg(target_os = "linux")]
