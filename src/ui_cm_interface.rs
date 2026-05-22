@@ -185,6 +185,8 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
 
     fn remove_connection(&self, id: i32, close: bool);
 
+    fn show_window(&self) {}
+
     fn new_message(&self, id: i32, text: String);
 
     fn change_theme(&self, dark: String);
@@ -556,6 +558,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 }
                                 Data::Close => {
                                     log::info!("cm ipc connection closed from connection request");
+                                    break;
+                                }
+                                Data::ShowCmWindow => {
+                                    self.cm.show_window();
                                     break;
                                 }
                                 Data::Disconnected => {
