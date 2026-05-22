@@ -1,4 +1,4 @@
-package com.carriez.flutter_hbb
+package com.remotdesk.client
 
 /**
  * Handle events from flutter
