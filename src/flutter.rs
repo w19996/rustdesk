@@ -1522,6 +1522,10 @@ pub mod connection_manager {
             );
         }
 
+        fn show_window(&self) {
+            self.push_event::<&str>("show_cm_window", &[]);
+        }
+
         fn new_message(&self, id: i32, text: String) {
             self.push_event(
                 "chat_server_mode",
