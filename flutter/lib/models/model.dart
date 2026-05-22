@@ -3415,13 +3415,16 @@ class CursorModel with ChangeNotifier {
     notifyListeners();
   }
 
-  updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {
+  updateDisplayOrigin(double x, double y,
+      {updateCursorPos = true, sendMouse = true}) {
     _displayOriginX = x;
     _displayOriginY = y;
     if (updateCursorPos) {
       _x = x + 1;
       _y = y + 1;
-      parent.target?.inputModel.moveMouse(x, y);
+      if (sendMouse) {
+        parent.target?.inputModel.moveMouse(x, y);
+      }
     }
     parent.target?.canvasModel.resetOffset();
     notifyListeners();
@@ -3433,7 +3436,6 @@ class CursorModel with ChangeNotifier {
     _displayOriginY = y;
     _x = xCursor;
     _y = yCursor;
-    parent.target?.inputModel.moveMouse(x, y);
     notifyListeners();
   }
 
@@ -4173,7 +4175,8 @@ Future<void> initializeCursorAndCanvas(FFI ffi) async {
   }
   if (p == null || currentDisplay != ffi.ffiModel.pi.currentDisplay) {
     ffi.cursorModel.updateDisplayOrigin(
-        ffi.ffiModel.rect?.left ?? 0, ffi.ffiModel.rect?.top ?? 0);
+        ffi.ffiModel.rect?.left ?? 0, ffi.ffiModel.rect?.top ?? 0,
+        sendMouse: false);
     return;
   }
   double xCursor = p['xCursor'];
