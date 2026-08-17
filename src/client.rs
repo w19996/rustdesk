@@ -548,6 +548,13 @@ impl Client {
                             }
                         }
                         signed_id_pk = rr.pk().into();
+                        feedback = rr.feedback;
+                        if !interface.is_force_relay() {
+                            if let Some(conn) = Self::connect_lan(&peer, &signed_id_pk, &key).await
+                            {
+                                return Ok((conn, (feedback, rendezvous_server), false));
+                            }
+                        }
                         let fut = Self::create_relay(
                             &peer,
                             rr.uuid,
@@ -570,7 +577,6 @@ impl Client {
                             Err(e) => (Err(e), None, ""),
                         };
                         let mut conn = conn?;
-                        feedback = rr.feedback;
                         log::info!("{:?} used to establish {typ} connection", start.elapsed());
                         let pk =
                             Self::secure_connection(&peer, signed_id_pk, &key, &mut conn).await?;
@@ -589,6 +595,11 @@ impl Client {
         drop(socket);
         if peer_addr.port() == 0 {
             bail!("Failed to connect via rendezvous server");
+        }
+        if !interface.is_force_relay() {
+            if let Some(conn) = Self::connect_lan(&peer, &signed_id_pk, &key).await {
+                return Ok((conn, (feedback, rendezvous_server), false));
+            }
         }
         let time_used = start.elapsed().as_millis() as u64;
         log::info!(
@@ -626,6 +637,37 @@ impl Client {
             (feedback, rendezvous_server),
             true,
         ))
+    }
+
+    async fn connect_lan(
+        peer_id: &str,
+        signed_id_pk: &[u8],
+        key: &str,
+    ) -> Option<(
+        Stream,
+        bool,
+        Option<Vec<u8>>,
+        Option<KcpStream>,
+        &'static str,
+    )> {
+        let addrs: Vec<_> = config::LanPeers::load()
+            .peers
+            .into_iter()
+            .filter(|peer| peer.online && peer.id == peer_id)
+            .flat_map(|peer| peer.ip_mac.into_iter())
+            .map(|(ip, _)| check_port(&ip, RELAY_PORT + 1))
+            .collect();
+        for addr in addrs {
+            log::info!("try LAN connection to {peer_id} at {addr}");
+            let Ok(mut conn) = connect_tcp_local(&addr, None, 1_000).await else {
+                continue;
+            };
+            match Self::secure_connection(peer_id, signed_id_pk.to_vec(), key, &mut conn).await {
+                Ok(pk) => return Some((conn, true, pk, None, "TCP")),
+                Err(err) => log::warn!("LAN connection to {peer_id} at {addr} failed: {err}"),
+            }
+        }
+        None
     }
 
     /// Connect to the peer.
