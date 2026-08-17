@@ -18,10 +18,47 @@ use hbb_common::{
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs, UdpSocket},
+    sync::RwLock,
     time::Instant,
 };
 
 type Message = RendezvousMessage;
+
+lazy_static::lazy_static! {
+    static ref PEER_PUBLIC_KEYS: RwLock<HashMap<String, Vec<u8>>> =
+        RwLock::new(HashMap::new());
+}
+
+pub(super) fn get_peer_public_key(id: &str) -> Option<Vec<u8>> {
+    PEER_PUBLIC_KEYS
+        .read()
+        .unwrap()
+        .get(id)
+        .cloned()
+        .or_else(|| {
+            config::LanPeers::load()
+                .peers
+                .into_iter()
+                .find(|peer| peer.id == id)
+                .and_then(|peer| {
+                    peer.ip_mac.values().find_map(|value| {
+                        value
+                            .split_once('|')
+                            .and_then(|(_, key)| decode_public_key(key))
+                    })
+                })
+        })
+}
+
+fn cache_peer_public_key(id: &str, encoded: &str) {
+    if let Some(key) = decode_public_key(encoded) {
+        PEER_PUBLIC_KEYS.write().unwrap().insert(id.to_owned(), key);
+    }
+}
+
+fn decode_public_key(encoded: &str) -> Option<Vec<u8>> {
+    crate::decode64(encoded).ok().filter(|key| key.len() == 32)
+}
 
 #[cfg(not(target_os = "ios"))]
 pub(super) fn start_listening() -> ResultType<()> {
@@ -59,6 +96,7 @@ pub(super) fn start_listening() -> ResultType<()> {
                                     hostname,
                                     username: crate::platform::get_active_username(),
                                     platform: whoami::platform().to_string(),
+                                    misc: crate::encode64(Config::get_key_pair().1),
                                     ..Default::default()
                                 };
                                 msg_out.set_peer_discovery(peer);
@@ -87,8 +125,8 @@ pub fn send_wol(id: String) {
     let interfaces = default_net::get_interfaces();
     for peer in &config::LanPeers::load().peers {
         if peer.id == id {
-            for (_, mac) in peer.ip_mac.iter() {
-                if let Ok(mac_addr) = mac.parse() {
+            for (_, value) in peer.ip_mac.iter() {
+                if let Ok(mac_addr) = value.split('|').next().unwrap_or_default().parse() {
                     for interface in &interfaces {
                         for ipv4 in &interface.ipv4 {
                             // remove below mask check to avoid unexpected bug
@@ -105,7 +143,7 @@ pub fn send_wol(id: String) {
 }
 
 #[inline]
-fn get_broadcast_port() -> u16 {
+pub(super) fn get_broadcast_port() -> u16 {
     (RENDEZVOUS_PORT + 3) as _
 }
 
@@ -249,6 +287,12 @@ fn wait_response(
                                 continue;
                             }
 
+                            cache_peer_public_key(&p.id, &p.misc);
+                            let mac_with_key = if decode_public_key(&p.misc).is_some() {
+                                format!("{}|{}", p.mac, p.misc)
+                            } else {
+                                p.mac.clone()
+                            };
                             let local_mac = if try_get_ip_by_peer {
                                 if let Some(self_addr) = get_ipaddr_by_peer(&addr) {
                                     get_mac(&self_addr)
@@ -273,9 +317,7 @@ fn wait_response(
                             if local_mac.is_empty() && p.mac.is_empty() || local_mac != p.mac {
                                 allow_err!(tx.send(config::DiscoveryPeer {
                                     id: p.id.clone(),
-                                    ip_mac: HashMap::from([
-                                        (addr.ip().to_string(), p.mac.clone(),)
-                                    ]),
+                                    ip_mac: HashMap::from([(addr.ip().to_string(), mac_with_key,)]),
                                     username: p.username.clone(),
                                     hostname: p.hostname.clone(),
                                     platform: p.platform.clone(),
@@ -349,4 +391,20 @@ async fn handle_received_peers(mut rx: UnboundedReceiver<config::DiscoveryPeer>)
     #[cfg(feature = "flutter")]
     crate::flutter_ffi::main_load_lan_peers();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cache_peer_public_key, get_peer_public_key};
+
+    #[test]
+    fn caches_only_valid_peer_public_keys() {
+        let id = "lan-peer-public-key-test";
+        cache_peer_public_key(id, "invalid");
+        assert_eq!(get_peer_public_key(id), None);
+
+        let key = vec![7; 32];
+        cache_peer_public_key(id, &crate::encode64(&key));
+        assert_eq!(get_peer_public_key(id), Some(key));
+    }
 }
