@@ -1,4 +1,4 @@
-package com.remotdesk.client
+package com.carriez.flutter_hbb
 
 import android.app.Activity
 import android.content.Intent

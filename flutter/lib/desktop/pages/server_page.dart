@@ -55,18 +55,14 @@ class _DesktopServerPageState extends State<DesktopServerPage>
 
   @override
   void onWindowClose() {
-    if (gFFI.serverModel.clients.isNotEmpty) {
-      hideCurrentCmWindow();
-    } else {
-      gFFI.close().then((_) {
-        if (isMacOS) {
-          RdPlatformChannel.instance.terminate();
-        } else {
-          windowManager.setPreventClose(false);
-          windowManager.close();
-        }
-      });
-    }
+    Future.wait([gFFI.serverModel.closeAll(), gFFI.close()]).then((_) {
+      if (isMacOS) {
+        RdPlatformChannel.instance.terminate();
+      } else {
+        windowManager.setPreventClose(false);
+        windowManager.close();
+      }
+    });
     super.onWindowClose();
   }
 
@@ -168,6 +164,14 @@ class ConnectionManagerState extends State<ConnectionManager>
   @override
   Widget build(BuildContext context) {
     final serverModel = Provider.of<ServerModel>(context);
+    pointerHandler(PointerEvent e) {
+      if (serverModel.cmHiddenTimer != null) {
+        serverModel.cmHiddenTimer!.cancel();
+        serverModel.cmHiddenTimer = null;
+        debugPrint("CM hidden timer has been canceled");
+      }
+    }
+
     return serverModel.clients.isEmpty
         ? Column(
             children: [
@@ -179,7 +183,10 @@ class ConnectionManagerState extends State<ConnectionManager>
               ),
             ],
           )
-        : DesktopTab(
+        : Listener(
+            onPointerDown: pointerHandler,
+            onPointerMove: pointerHandler,
+            child: DesktopTab(
               showTitle: false,
               showMaximize: false,
               showMinimize: true,
@@ -254,7 +261,8 @@ class ConnectionManagerState extends State<ConnectionManager>
                   );
                 },
               ),
-            );
+            ),
+          );
   }
 
   Widget buildSidePage() {
@@ -316,16 +324,25 @@ class ConnectionManagerState extends State<ConnectionManager>
   }
 
   Future<bool> handleWindowCloseButton() async {
-    await hideCurrentCmWindow();
-    return false;
+    var tabController = gFFI.serverModel.tabController;
+    final connLength = tabController.length;
+    if (connLength <= 1) {
+      windowManager.close();
+      return true;
+    } else {
+      final bool res;
+      if (!option2bool(kOptionEnableConfirmClosingTabs,
+          bind.mainGetLocalOption(key: kOptionEnableConfirmClosingTabs))) {
+        res = true;
+      } else {
+        res = await closeConfirmDialog();
+      }
+      if (res) {
+        windowManager.close();
+      }
+      return res;
+    }
   }
-}
-
-Future<void> hideCurrentCmWindow() async {
-  await windowManager.setOpacity(0);
-  bind.mainHideDock();
-  await windowManager.minimize();
-  await windowManager.hide();
 }
 
 Widget buildConnectionCard(Client client) {
@@ -372,7 +389,7 @@ class _CloseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       onPressed: () {
-        hideCurrentCmWindow();
+        windowManager.close();
       },
       icon: const Icon(
         IconFont.close,

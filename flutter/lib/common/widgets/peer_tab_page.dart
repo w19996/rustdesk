@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:bot_toast/bot_toast.dart';
@@ -44,9 +43,6 @@ EdgeInsets? _menuPadding() {
 
 class _PeerTabPageState extends State<PeerTabPage>
     with SingleTickerProviderStateMixin {
-  static const _lanDiscoveryInterval = Duration(seconds: 15);
-  Timer? _lanDiscoveryTimer;
-
   final List<_TabEntry> entries = [
     _TabEntry(RecentPeersView(
       menuPadding: _menuPadding(),
@@ -77,23 +73,6 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   _PeerTabPageState() {
     _loadLocalOptions();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (gFFI.peerTabModel.isEnabled[PeerTabIndex.lan.index]) {
-      bind.mainLoadLanPeers();
-      bind.mainDiscover();
-      _lanDiscoveryTimer =
-          Timer.periodic(_lanDiscoveryInterval, (_) => bind.mainDiscover());
-    }
-  }
-
-  @override
-  void dispose() {
-    _lanDiscoveryTimer?.cancel();
-    super.dispose();
   }
 
   void _loadLocalOptions() {

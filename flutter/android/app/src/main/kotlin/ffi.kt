@@ -5,7 +5,7 @@ package ffi
 import android.content.Context
 import java.nio.ByteBuffer
 
-import com.remotdesk.client.RdClipboardManager
+import com.carriez.flutter_hbb.RdClipboardManager
 
 object FFI {
     init {

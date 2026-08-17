@@ -1,4 +1,4 @@
-package com.remotdesk.client
+package com.carriez.flutter_hbb
 
 import android.Manifest.permission.*
 import android.annotation.SuppressLint

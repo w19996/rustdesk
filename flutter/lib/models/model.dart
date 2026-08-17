@@ -397,8 +397,6 @@ class FfiModel with ChangeNotifier {
         parent.target?.serverModel.addConnection(evt);
       } else if (name == 'on_client_remove') {
         parent.target?.serverModel.onClientRemove(evt);
-      } else if (name == 'show_cm_window') {
-        await parent.target?.serverModel.showConnectionManagerWindow();
       } else if (name == 'update_quality_status') {
         parent.target?.qualityMonitorModel.updateQualityStatus(evt);
       } else if (name == 'update_block_input_state') {
@@ -3490,16 +3488,13 @@ class CursorModel with ChangeNotifier {
     notifyListeners();
   }
 
-  updateDisplayOrigin(double x, double y,
-      {updateCursorPos = true, sendMouse = true}) {
+  updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {
     _displayOriginX = x;
     _displayOriginY = y;
     if (updateCursorPos) {
       _x = x + 1;
       _y = y + 1;
-      if (sendMouse) {
-        parent.target?.inputModel.moveMouse(x, y);
-      }
+      parent.target?.inputModel.moveMouse(x, y);
     }
     parent.target?.canvasModel.resetOffset();
     notifyListeners();
@@ -3511,6 +3506,7 @@ class CursorModel with ChangeNotifier {
     _displayOriginY = y;
     _x = xCursor;
     _y = yCursor;
+    parent.target?.inputModel.moveMouse(x, y);
     notifyListeners();
   }
 
@@ -4282,8 +4278,7 @@ Future<void> initializeCursorAndCanvas(FFI ffi) async {
   }
   if (p == null || currentDisplay != ffi.ffiModel.pi.currentDisplay) {
     ffi.cursorModel.updateDisplayOrigin(
-        ffi.ffiModel.rect?.left ?? 0, ffi.ffiModel.rect?.top ?? 0,
-        sendMouse: false);
+        ffi.ffiModel.rect?.left ?? 0, ffi.ffiModel.rect?.top ?? 0);
     return;
   }
   double xCursor = p['xCursor'];
