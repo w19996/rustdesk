@@ -134,10 +134,12 @@ impl RendezvousMediator {
         tokio::spawn(async move {
             direct_server(server_cloned).await;
         });
-        #[cfg(target_os = "android")]
+        let server_cloned = server.clone();
+        tokio::spawn(async move {
+            lan_direct_server(server_cloned).await;
+        });
+        #[cfg(not(target_os = "ios"))]
         let start_lan_listening = true;
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let start_lan_listening = crate::platform::is_installed();
         if start_lan_listening {
             std::thread::spawn(move || {
                 allow_err!(super::lan::start_listening());
@@ -905,6 +907,56 @@ async fn direct_server(server: ServerPtr) {
                 });
             } else {
                 sleep(0.1).await;
+            }
+        } else {
+            sleep(1.).await;
+        }
+    }
+}
+
+async fn lan_direct_server(server: ServerPtr) {
+    let mut listener = None;
+    loop {
+        let disabled = !option2bool(
+            "enable-lan-discovery",
+            &Config::get_option("enable-lan-discovery"),
+        ) || option2bool("stop-service", &Config::get_option("stop-service"));
+        if !disabled && listener.is_none() {
+            let port = crate::lan::get_broadcast_port();
+            match hbb_common::tcp::listen_any(port).await {
+                Ok(value) => {
+                    listener = Some(value);
+                    log::info!("Secure LAN server listening on port {port}");
+                }
+                Err(err) => {
+                    log::error!("Failed to start secure LAN server on port {port}: {err}");
+                    sleep(1.).await;
+                }
+            }
+        }
+        if let Some(value) = listener.as_mut() {
+            if disabled {
+                listener = None;
+                continue;
+            }
+            if let Ok(Ok((stream, addr))) = hbb_common::timeout(1_000, value.accept()).await {
+                stream.set_nodelay(true).ok();
+                let local_addr = stream
+                    .local_addr()
+                    .unwrap_or(Config::get_any_listen_addr(true));
+                let server = server.clone();
+                tokio::spawn(async move {
+                    allow_err!(
+                        crate::server::create_tcp_connection(
+                            server,
+                            Stream::from(stream, local_addr),
+                            addr,
+                            true,
+                            None,
+                        )
+                        .await
+                    );
+                });
             }
         } else {
             sleep(1.).await;
