@@ -279,6 +279,14 @@ fn wait_response(
                     Some(rendezvous_message::Union::PeerDiscovery(p)) => {
                         last_recv_time = Instant::now();
                         if p.cmd == "pong" {
+                            if !crate::common::is_valid_untrusted_peer_id(&p.id) {
+                                log::warn!(
+                                    "Ignoring LAN discovery response from {} with invalid peer id",
+                                    addr
+                                );
+                                continue;
+                            }
+
                             cache_peer_public_key(&p.id, &p.misc);
                             let mac_with_key = if decode_public_key(&p.misc).is_some() {
                                 format!("{}|{}", p.mac, p.misc)
