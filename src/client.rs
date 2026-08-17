@@ -671,7 +671,7 @@ impl Client {
         }
         for addr in addrs {
             log::info!("try LAN connection to {peer_id} at {addr}");
-            let Ok(mut conn) = connect_tcp_local(&addr, None, 1_000).await else {
+            let Ok(mut conn) = connect_tcp_local(addr.as_str(), None, 1_000).await else {
                 continue;
             };
             let sign_pk = public_key.as_deref().and_then(|key| {
