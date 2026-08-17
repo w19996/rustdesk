@@ -29,7 +29,6 @@ use uuid::Uuid;
 
 use crate::{
     check_port,
-    common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
     create_symmetric_key_msg, decode_id_pk, get_rs_pk, is_keyboard_mode_supported,
     kcp_stream::KcpStream,
     secure_tcp,
@@ -283,6 +282,20 @@ impl Client {
                 (0, "".to_owned()),
                 false,
             ));
+        }
+
+        if !interface.is_force_relay() {
+            let peer_id = interface
+                .get_lch()
+                .read()
+                .unwrap()
+                .other_server
+                .as_ref()
+                .map(|(id, _, _)| id.clone())
+                .unwrap_or_else(|| peer.to_owned());
+            if let Some(conn) = Self::connect_lan(&peer_id).await {
+                return Ok((conn, (0, String::new()), false));
+            }
         }
 
         let other_server = interface.get_lch().read().unwrap().other_server.clone();
@@ -632,6 +645,53 @@ impl Client {
         ))
     }
 
+    async fn connect_lan(
+        peer_id: &str,
+    ) -> Option<(
+        Stream,
+        bool,
+        Option<Vec<u8>>,
+        Option<KcpStream>,
+        &'static str,
+    )> {
+        let public_key = crate::lan::get_peer_public_key(peer_id);
+        let port = if public_key.is_some() {
+            crate::lan::get_broadcast_port()
+        } else {
+            (RELAY_PORT + 1) as _
+        };
+        let addrs: Vec<_> = config::LanPeers::load()
+            .peers
+            .into_iter()
+            .filter(|peer| peer.online && peer.id == peer_id)
+            .flat_map(|peer| peer.ip_mac.into_iter())
+            .map(|(ip, _)| check_port(&ip, port as _))
+            .collect();
+        if public_key.is_none() && !addrs.is_empty() {
+            log::warn!(
+                "LAN peer {peer_id} did not advertise a public key; connecting without transport encryption"
+            );
+        }
+        for addr in addrs {
+            log::info!("try LAN connection to {peer_id} at {addr}");
+            let Ok(mut conn) = connect_tcp_local(addr.as_str(), None, 1_000).await else {
+                continue;
+            };
+            let sign_pk = public_key.as_deref().and_then(|key| {
+                <[u8; sign::PUBLICKEYBYTES]>::try_from(key)
+                    .ok()
+                    .map(sign::PublicKey)
+            });
+            match Self::secure_connection_with_key(peer_id, sign_pk, public_key.clone(), &mut conn)
+                .await
+            {
+                Ok(pk) => return Some((conn, true, pk, None, "TCP")),
+                Err(err) => log::warn!("LAN connection to {peer_id} at {addr} failed: {err}"),
+            }
+        }
+        None
+    }
+
     /// Connect to the peer.
     async fn connect(
         local_addr: SocketAddr,
@@ -786,6 +846,15 @@ impl Client {
                 log::error!("Handshake failed: invalid public key from rendezvous server");
             }
         }
+        Self::secure_connection_with_key(peer_id, sign_pk, option_pk, conn).await
+    }
+
+    async fn secure_connection_with_key(
+        peer_id: &str,
+        sign_pk: Option<sign::PublicKey>,
+        option_pk: Option<Vec<u8>>,
+        conn: &mut Stream,
+    ) -> ResultType<Option<Vec<u8>>> {
         let sign_pk = match sign_pk {
             Some(v) => v,
             None => {
@@ -3260,30 +3329,13 @@ pub fn send_pointer_device_event(
     interface.send(Data::Message(msg_out));
 }
 
-/// Activate OS by sending mouse movement.
+/// Activate OS without injecting mouse input.
 ///
 /// # Arguments
 ///
 /// * `interface` - The interface for sending data.
-/// * `send_left_click` - Whether to send a click event.
-fn activate_os(interface: &impl Interface, send_left_click: bool) {
-    let left_down = MOUSE_BUTTON_LEFT << 3 | MOUSE_TYPE_DOWN;
-    let left_up = MOUSE_BUTTON_LEFT << 3 | MOUSE_TYPE_UP;
-    let right_down = MOUSE_BUTTON_RIGHT << 3 | MOUSE_TYPE_DOWN;
-    let right_up = MOUSE_BUTTON_RIGHT << 3 | MOUSE_TYPE_UP;
-    send_mouse(left_up, 0, 0, false, false, false, false, interface);
-    std::thread::sleep(Duration::from_millis(50));
-    send_mouse(0, 0, 0, false, false, false, false, interface);
-    std::thread::sleep(Duration::from_millis(50));
-    send_mouse(0, 3, 3, false, false, false, false, interface);
-    let (click_down, click_up) = if send_left_click {
-        (left_down, left_up)
-    } else {
-        (right_down, right_up)
-    };
-    std::thread::sleep(Duration::from_millis(50));
-    send_mouse(click_down, 0, 0, false, false, false, false, interface);
-    send_mouse(click_up, 0, 0, false, false, false, false, interface);
+/// * `send_left_click` - Kept for compatibility with the previous call path.
+fn activate_os(_interface: &impl Interface, _send_left_click: bool) {
     /*
     let mut key_event = KeyEvent::new();
     // do not use Esc, which has problem with Linux
@@ -3318,7 +3370,6 @@ pub fn input_os_password(p: String, activate: bool, interface: impl Interface) {
 fn _input_os_password(p: String, activate: bool, interface: impl Interface) {
     let input_password = !p.is_empty();
     if activate {
-        // Click event is used to bring up the password input box.
         activate_os(&interface, input_password);
         std::thread::sleep(Duration::from_millis(1200));
     }
